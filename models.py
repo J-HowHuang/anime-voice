@@ -128,7 +128,7 @@ class ResNet(nn.Module):
         self,
         block: Type[Union[BasicBlock, Bottleneck]],
         layers: List[int],
-        num_classes: int = 11,
+        num_classes: int = 1,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
@@ -165,6 +165,7 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.sigmoid = nn.Sigmoid()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -223,6 +224,7 @@ class ResNet(nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
+        x = self.sigmoid(x)
 
         return x
 
@@ -317,6 +319,7 @@ class VGG(nn.Module):
             nn.ReLU(True),
             nn.Dropout(),
             nn.Linear(4096, num_classes),
+            nn.Sigmoid()
         )
         if init_weights:
             self._initialize_weights()
@@ -393,7 +396,7 @@ import torchvision.models as models
 
 class cnn(nn.Module):
 
-    def __init__(self):
+    def __init__(self, num_class):
         super(cnn, self).__init__()
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
         self.cnn = nn.Sequential(
@@ -409,7 +412,34 @@ class cnn(nn.Module):
             nn.Linear(1024, 512),
             nn.ReLU(True),
             nn.Dropout(),
-            nn.Linear(512, 11),
+            nn.Linear(512, num_class),
+            nn.Sigmoid()
+        )
+    def forward(self, x):
+        x = self.cnn(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x
+    
+class cnn_light(nn.Module):
+    def __init__(self, num_class):
+        super(cnn_light, self).__init__()
+        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.cnn = nn.Sequential(
+             nn.Conv2d(1, 32, kernel_size=3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+             nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+             nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        )
+        self.fc = nn.Sequential(
+            nn.Linear(64 * 7 * 7, 1024),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(1024, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, num_class),
+            nn.Sigmoid()
         )
     def forward(self, x):
         x = self.cnn(x)
