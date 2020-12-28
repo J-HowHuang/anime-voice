@@ -133,7 +133,8 @@ class ResNet(nn.Module):
         groups: int = 1,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        get_avg_layer = False
     ) -> None:
         super(ResNet, self).__init__()
         if norm_layer is None:
@@ -164,6 +165,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.get_avg_layer = get_avg_layer
         self.fc = nn.Linear(512 * block.expansion, num_classes)
         self.sigmoid = nn.Sigmoid()
 
@@ -223,6 +225,8 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
+        if self.get_avg_layer:
+            return x
         x = self.fc(x)
         x = self.sigmoid(x)
 
@@ -447,3 +451,35 @@ class cnn_light(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
+class LSTM_Net(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers, dropout=0.5, get_hidden_layer=False):
+        super(LSTM_Net, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.input_dim = input_dim
+        self.dropout = dropout
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, bidirectional=True)
+        self.lstm2 = nn.LSTM(hidden_dim*2, hidden_dim, num_layers=num_layers, batch_first=True, bidirectional=True)
+        self.get_hidden_layer = get_hidden_layer
+        self.linear = nn.Linear(hidden_dim*2, 5)
+        with torch.no_grad():
+            self.linear.weight = torch.nn.Parameter(torch.zeros([self.linear.weight.shape[0], self.linear.weight.shape[1]], dtype=torch.float32))
+        self.classifier = nn.Sequential( nn.Dropout(dropout),
+                                         self.linear,
+                                         nn.Sigmoid() )
+    def forward(self, inputs):
+        #x, _ = self.lstm(inputs, None)
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        h0 = torch.zeros(self.num_layers*2, inputs.size(0), self.hidden_dim).to(device, dtype=torch.float).requires_grad_()
+        c0 = torch.zeros(self.num_layers*2, inputs.size(0), self.hidden_dim).to(device, dtype=torch.float).requires_grad_()
+        x, (hn, cn) = self.lstm(inputs, (h0.detach(), c0.detach()))
+        x, _ = self.lstm2(x, (hn.detach(), cn.detach()))
+
+        # x 的 dimension (batch, seq_len, hidden_size)
+        # 取用 LSTM 最後一層的 hidden state
+        x = x[:, -1, :] 
+        if self.get_hidden_layer:
+            return x
+        x = self.classifier(x)
+        return x
+        
